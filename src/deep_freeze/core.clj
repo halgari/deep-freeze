@@ -11,13 +11,8 @@
 (def KEYWORD 9)
 (def META 10)
 
-(def freeze-to-stream [stream item]
-	(if (isa? (class item))
-		(do (.writeInt stream META)
-			(*freeze (meta item) stream)))
-	(*freeze item))
 		
-
+(def freeze-to-stream nil)
 
 (defprotocol Freezeable 
 	(*freeze [obj stream]))
@@ -52,17 +47,36 @@
 			(.writeInt stream VECTOR)
 			(.writeInt stream (count itm))
 			(for [i itm]
-				(freeze i stream)))
+				(freeze-to-stream i stream)))
 	clojure.lang.PersistentArrayMap
 		(*freeze [itm stream]
 			(.writeInt stream MAP)
-			(.writeInt (count itm))
+			(.writeInt stream (count itm))
 			(for [i itm]
-				(freeze i stream)))
+				(freeze-to-stream i stream)))
 	clojure.lang.Keyword
 		(*freeze [itm stream]
 			(.writeInt stream KEYWORD)
-			(.writeUTF stream (name itm))))
+			(.writeUTF stream (name itm)))
+	Object
+		(*freeze [itm stream]
+			(println (str "Can't freeze" (class itm)))))
+
+
+(defn freeze-to-stream [item stream]
+	(println (class item))
+	(if (isa? (class item) clojure.lang.IObj)
+		(if (not (nil? (meta item)))
+			(do (.writeInt stream META)
+			    (freeze-to-stream (meta item) stream))))
+	(*freeze item stream))
+
+(defn freeze-to-array [item]
+	(let [ba (java.io.ByteArrayOutputStream.)
+		  stream (java.io.DataOutputStream. ba)]
+		(freeze-to-stream item stream)
+		(.flush stream)
+		(.toByteArray ba)))
 
 (defmulti thaw (fn [stream] (.readInt stream)))
 (defmethod thaw DOUBLE

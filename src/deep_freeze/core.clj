@@ -52,8 +52,9 @@
 		(*freeze [itm stream]
 			(.writeInt stream MAP)
 			(.writeInt stream (count itm))
-			(for [i itm]
-				(freeze-to-stream i stream)))
+			(doseq [i itm]
+				(freeze-to-stream (first i) stream)
+				(freeze-to-stream (second i) stream)))
 	clojure.lang.Keyword
 		(*freeze [itm stream]
 			(.writeInt stream KEYWORD)
@@ -100,6 +101,12 @@
 	[stream]
 	(let [cnt (.readInt stream)]
 		(vec (map (fn [x] (thaw stream)) (range cnt)))))
+(defmethod thaw MAP
+	[stream]
+	(let [cnt (.readInt stream)
+	      trans (transient {})]
+		(doseq [x (range cnt)] (assoc! trans (thaw stream) (thaw stream)))
+		(persistent! trans)))
 
 (defn thaw-from-array [array]
 	(thaw (java.io.DataInputStream. (java.io.ByteArrayInputStream. array))))

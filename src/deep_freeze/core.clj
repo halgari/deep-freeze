@@ -46,7 +46,7 @@
 		(*freeze [itm stream]
 			(.writeInt stream VECTOR)
 			(.writeInt stream (count itm))
-			(for [i itm]
+			(doseq [i itm]
 				(freeze-to-stream i stream)))
 	clojure.lang.PersistentArrayMap
 		(*freeze [itm stream]
@@ -60,11 +60,10 @@
 			(.writeUTF stream (name itm)))
 	Object
 		(*freeze [itm stream]
-			(println (str "Can't freeze" (class itm)))))
+			(throw (java.lang.Exception. (str "Can't freeze" (class itm))))))
 
 
 (defn freeze-to-stream [item stream]
-	(println (class item))
 	(if (isa? (class item) clojure.lang.IObj)
 		(if (not (nil? (meta item)))
 			(do (.writeInt stream META)
@@ -78,13 +77,13 @@
 		(.flush stream)
 		(.toByteArray ba)))
 
-(defmulti thaw (fn [stream] (.readInt stream)))
+(defmulti thaw #(.readInt %))
 (defmethod thaw DOUBLE
 	[stream]
 	(.readDouble stream))
 (defmethod thaw INTEGER
 	[stream]
-	(.readInteger stream))
+	(.readInt stream))
 (defmethod thaw LONG
 	[stream]
 	(.readLong stream))
@@ -99,15 +98,13 @@
 	(.readFloat stream))
 (defmethod thaw VECTOR
 	[stream]
-	(let [cnt (.readInt stream)
-		  trans (transient [])]
-		 (persistent! 
-		 	 (loop [vec trans 
-		 	 	 	cur 0]
-		 	 	 (conj! trans (thaw stream))
-		 	 	 (if (= cur cnt)
-		 	 	 	 trans
-		 	 	 	 (recur trans (inc cur)))))))
-		
-		
-(def stream (java.io.DataOutputStream. (java.io.ByteArrayOutputStream.)))
+	(let [cnt (.readInt stream)]
+		(vec (map (fn [x] (thaw stream)) (range cnt)))))
+
+(defn thaw-from-array [array]
+	(thaw (java.io.DataInputStream. (java.io.ByteArrayInputStream. array))))
+
+(defn clone [data]
+	(thaw-from-array (freeze-to-array data)))
+
+

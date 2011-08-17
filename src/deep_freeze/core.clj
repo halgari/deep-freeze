@@ -10,6 +10,7 @@
 (def MAP 8)
 (def KEYWORD 9)
 (def META 10)
+(def STRING 11)
 
 		
 (def freeze-to-stream nil)
@@ -59,6 +60,11 @@
 		(*freeze [itm stream]
 			(.writeInt stream KEYWORD)
 			(.writeUTF stream (name itm)))
+	java.lang.String
+		(*freeze [itm stream]
+			(.writeInt stream STRING)
+			(.writeUTF stream itm))
+		
 	Object
 		(*freeze [itm stream]
 			(throw (java.lang.Exception. (str "Can't freeze" (class itm))))))
@@ -107,6 +113,16 @@
 	      trans (transient {})]
 		(doseq [x (range cnt)] (assoc! trans (thaw stream) (thaw stream)))
 		(persistent! trans)))
+(defmethod thaw META
+	[stream]
+	(let [m (thaw stream)]
+		(with-meta (thaw stream) m)))
+(defmethod thaw KEYWORD
+	[stream]
+	(keyword (.readUTF stream)))
+(defmethod thaw STRING
+	[stream]
+	(.readUTF stream))
 
 (defn thaw-from-array [array]
 	(thaw (java.io.DataInputStream. (java.io.ByteArrayInputStream. array))))

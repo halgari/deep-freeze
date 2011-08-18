@@ -11,12 +11,29 @@
 (def KEYWORD 9)
 (def META 10)
 (def STRING 11)
+(def BIGINTEGER 12)
+(def RATIO 13)
+(def BIGDECIMAL 14)
 
 		
 (def freeze-to-stream nil)
 
 (defprotocol Freezeable 
 	(*freeze [obj stream]))
+
+(defn write-bigint [i stream]
+	(let [ba (.toByteArray i)
+	      c (count ba)]
+		(.writeShort stream c)
+		(.write stream ba 0 c)))
+
+(defn read-bigint [stream]
+	(let [size (.readShort stream)
+	      ba (byte-array size)]
+	      (.read stream ba 0 size)
+	      (java.math.BigInteger. ba)))
+	      
+		
 
 (extend-protocol Freezeable
 	java.lang.Double
@@ -64,6 +81,20 @@
 		(*freeze [itm stream]
 			(.writeInt stream STRING)
 			(.writeUTF stream itm))
+	java.math.BigInteger
+		(*freeze [itm stream]
+			(.writeInt stream BIGINTEGER)
+			(write-bigint itm stream))
+	java.math.BigDecimal
+		(*freeze [itm stream]
+			(.writeInt stream BIGDECIMAL)
+			(write-bigint (.unscaledValue itm) stream)
+			(.writeInt stream (.scale itm)))
+	clojure.lang.Ratio
+		(*freeze [itm stream]
+			(.writeInt stream RATIO)
+			(write-bigint (.numerator itm) stream)
+			(write-bigint (.denominator itm) stream))
 		
 	Object
 		(*freeze [itm stream]
@@ -123,11 +154,22 @@
 (defmethod thaw STRING
 	[stream]
 	(.readUTF stream))
+(defmethod thaw BIGINTEGER
+	[stream]
+	(read-bigint stream))
+(defmethod thaw BIGDECIMAL
+	[stream]
+	(java.math.BigDecimal. (read-bigint stream) (.readInt stream)))
+(defmethod thaw RATIO
+	[stream]
+	(/ (read-bigint stream) (read-bigint stream)))
 
 (defn thaw-from-array [array]
 	(thaw (java.io.DataInputStream. (java.io.ByteArrayInputStream. array))))
 
 (defn clone [data]
-	(thaw-from-array (freeze-to-array data)))
+	(let [ba (freeze-to-array data)]
+		(println (str "size: " (count ba)))
+		(thaw-from-array ba)))
 
 

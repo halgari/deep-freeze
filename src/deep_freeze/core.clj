@@ -126,10 +126,9 @@
 
 
 (defn freeze-to-stream [item ^java.io.DataOutputStream stream]
-	(if (isa? (class item) clojure.lang.IObj)
-		(if (not (nil? (meta item)))
-			(do (.writeInt stream META)
-			    (freeze-to-stream (meta item) stream))))
+	(if (not (nil? (meta item)))
+		(do (.writeInt stream META)
+		    (freeze-to-stream (meta item) stream)))
 	(*freeze item stream))
 
 (defn freeze-to-array [item]
@@ -209,4 +208,4 @@
 
 (def dat2 (vector (for [x (range 1000)] {:x 1 :y (str "foo" x) :zat x})))
 
-(defn bench [] (time (doseq [x (range 100)] (clone-clojure dat2))))
+(defn bench [] (time (doseq [x (range 100)] (clone dat2))))

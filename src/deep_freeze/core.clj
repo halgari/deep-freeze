@@ -20,6 +20,7 @@
 (def ^Integer ATOM 16)
 (def ^Integer REF 17)
 (def ^Integer AGENT 17)
+(def ^Integer KEYWORDINTERN 18)
 
 (set! *warn-on-reflection* true)
 		
@@ -38,8 +39,25 @@
 		(.writeInt stream type))
 	([^DataOutputStream stream type data]
 		(.writeInt stream (encode-id type data))))
-	
-	
+
+(defn new-cache [idx cache]
+	{:idx idx :cache cache})
+
+(defn add-cache-value [cache value]
+	(:idx (swap! cache
+			     #(let [newidx (inc (:idx %))]
+					   (new-cache newidx (assoc (:cache %) value newidx))))))
+
+(defn add-decode-value [cache value]
+	(swap! cache
+		   #(conj @cache value)))
+
+
+(defn cache-string [cache string]
+	(let [cachedvalue (get-in @cache [:cache string])]
+		 (if (nil? cachedvalue)
+		 	 (add-cache-value cache string)
+		 	 cachedvalue)))
 
 (defn write-bigint [i ^DataOutputStream stream]
 	(let [ba (.toByteArray i)
@@ -54,109 +72,116 @@
 	      (java.math.BigInteger. ba)))
 	      
 (defprotocol Freezeable 
-	(*freeze [obj ^DataOutputStream stream]))		
+	(*freeze [obj ^DataOutputStream stream cache]))		
 
 (extend-protocol Freezeable
 	java.lang.Double
-		(*freeze [itm ^DataOutputStream stream]
+		(*freeze [itm ^DataOutputStream stream cache]
 			(write-id stream DOUBLE)
 			(.writeDouble stream itm))
 	Integer
-		(*freeze [itm ^DataOutputStream stream]
+		(*freeze [itm ^DataOutputStream stream cache]
 			(write-id stream INTEGER)
 			(.writeInt stream itm))
 	java.lang.Long
-		(*freeze [itm ^DataOutputStream stream]
+		(*freeze [itm ^DataOutputStream stream cache]
 			(write-id stream LONG)
 			(.writeLong stream itm))
 	java.lang.Boolean
-		(*freeze [itm ^DataOutputStream stream]
+		(*freeze [itm ^DataOutputStream stream cache]
 			(write-id stream BOOLEAN)
 			(.writeBoolean stream itm))
 	java.lang.Float
-		(*freeze [itm ^DataOutputStream stream]
+		(*freeze [itm ^DataOutputStream stream cache]
 			(write-id stream FLOAT)
 			(.writeFloat stream itm))
 	java.lang.Short
-		(*freeze [itm ^DataOutputStream stream]
+		(*freeze [itm ^DataOutputStream stream cache]
 			(write-id stream SHORT)
 			(.writeLong stream itm))
 	clojure.lang.PersistentVector
-		(*freeze [itm ^DataOutputStream stream]
+		(*freeze [itm ^DataOutputStream stream cache]
 			(write-id stream VECTOR (count itm))
 			(doseq [i itm]
-				(freeze-to-stream i stream)))
+				(freeze-to-stream i stream cache)))
 	clojure.lang.PersistentArrayMap
-		(*freeze [itm ^DataOutputStream stream]
+		(*freeze [itm ^DataOutputStream stream cache]
 			(write-id stream MAP (count itm))
 			(doseq [i itm]
-				(freeze-to-stream (first i) stream)
-				(freeze-to-stream (second i) stream)))
+				(freeze-to-stream (first i) stream cache)
+				(freeze-to-stream (second i) stream cache)))
 	clojure.lang.PersistentStructMap
-		(*freeze [itm ^DataOutputStream stream]
+		(*freeze [itm ^DataOutputStream stream cache]
 			(write-id stream MAP (count itm))
 			(doseq [i itm]
-				(freeze-to-stream (first i) stream)
-				(freeze-to-stream (second i) stream)))	
+				(freeze-to-stream (first i) stream cache)
+				(freeze-to-stream (second i) stream cache)))	
 	clojure.lang.PersistentHashMap
-		(*freeze [itm ^DataOutputStream stream]
+		(*freeze [itm ^DataOutputStream stream cache]
 			(write-id stream MAP (count itm))
 			(doseq [i itm]
-				(freeze-to-stream (first i) stream)
-				(freeze-to-stream (second i) stream)))			
+				(freeze-to-stream (first i) stream cache)
+				(freeze-to-stream (second i) stream cache)))			
 	clojure.lang.Keyword
-		(*freeze [itm ^DataOutputStream stream]
-			(write-id stream KEYWORD)
-			(.writeUTF stream (name itm)))
+		(*freeze [itm ^DataOutputStream stream cache]
+			(let [idx (cache-string cache (name itm))]
+				(if (nil? idx)
+					(do 
+						(write-id stream KEYWORD)
+						(.writeUTF stream (name itm)))
+					(write-id stream KEYWORDINTERN idx))))
 	java.lang.String
-		(*freeze [itm ^DataOutputStream stream]
+		(*freeze [itm ^DataOutputStream stream cache]
 			(write-id stream STRING)
 			(.writeUTF stream itm))
 	java.math.BigInteger
-		(*freeze [itm ^DataOutputStream stream]
+		(*freeze [itm ^DataOutputStream stream cache]
 			(write-id stream BIGINTEGER)
 			(write-bigint itm stream))
 	java.math.BigDecimal
-		(*freeze [itm ^DataOutputStream stream]
+		(*freeze [itm ^DataOutputStream stream cache]
 			(write-id stream BIGDECIMAL)
 			(write-bigint (.unscaledValue itm) stream)
 			(.writeInt stream (.scale itm)))
 	clojure.lang.Ratio
-		(*freeze [itm ^DataOutputStream stream]
+		(*freeze [itm ^DataOutputStream stream cache]
 			(write-id stream RATIO)
 			(write-bigint (.numerator itm) stream)
 			(write-bigint (.denominator itm) stream))
 	clojure.lang.LazySeq
-		(*freeze [itm ^DataOutputStream stream]
-			(write-id stream (encode-id VECTOR (count itm))
+		(*freeze [itm ^DataOutputStream stream cache]
+			(write-id stream VECTOR (count itm))
 			(doseq [i itm]
-				(freeze-to-stream i stream))))
+				(freeze-to-stream i stream cache)))
 	clojure.lang.Atom
-		(*freeze [itm ^DataOutputStream stream]
+		(*freeze [itm ^DataOutputStream stream cache]
 			(write-id stream ATOM)
-			(freeze-to-stream @itm stream))
+			(freeze-to-stream @itm stream cache))
 	clojure.lang.Ref
-		(*freeze [itm ^DataOutputStream stream]
+		(*freeze [itm ^DataOutputStream stream cache]
 			(write-id stream REF)
-			(freeze-to-stream @itm stream))
+			(freeze-to-stream @itm stream cache))
 	clojure.lang.Agent
-		(*freeze [itm ^DataOutputStream stream]
+		(*freeze [itm ^DataOutputStream stream cache]
 			(write-id stream AGENT)
-			(freeze-to-stream @itm stream))
+			(freeze-to-stream @itm stream cache))
 	nil
-		(*freeze [itm ^DataOutputStream stream]
+		(*freeze [itm ^DataOutputStream stream cache]
 			(write-id stream NIL))
 		
 	Object
-		(*freeze [itm ^DataOutputStream stream]
+		(*freeze [itm ^DataOutputStream stream cache]
 			(throw (java.lang.Exception. (str "Can't freeze " (class itm))))))
 
 
-(defn freeze-to-stream [item ^DataOutputStream stream]
-	(if (not (nil? (meta item)))
-		(do (write-id stream META)
-		    (freeze-to-stream (meta item) stream)))
-	(*freeze item stream))
+(defn freeze-to-stream 
+	([item ^DataOutputStream stream]
+		(freeze-to-stream item stream (atom (new-cache 0 {}))))
+	([item ^DataOutputStream stream cache]
+		(if (not (nil? (meta item)))
+			(do (write-id stream META)
+				(freeze-to-stream (meta item) stream cache)))
+		(*freeze item stream cache)))
 
 (defn freeze-to-array [item]
 	(let [ba (java.io.ByteArrayOutputStream.)
@@ -203,7 +228,12 @@
 		(with-meta (thaw stream) m)))
 (defmethod thaw KEYWORD
 	[type data cache ^DataInputStream stream]
-	(keyword (.readUTF stream)))
+	(let [s (.readUTF stream)]
+		(add-cache-value cache s)
+		(keyword s)))
+(defmethod thaw KEYWORDINTERN
+	[type data cache ^DataInputStream stream]
+	(keyword (get cache data)))
 (defmethod thaw STRING
 	[type data cache ^DataInputStream stream]
 	(.readUTF stream))
@@ -231,7 +261,7 @@
 
 (defn thaw-from-stream 
 	([^DataInputStream stream]
-		(thaw-from-stream {} stream))
+		(thaw-from-stream (atom (new-cache 0 {})) stream))
 	([cache ^DataInputStream stream]
 		(let [[id data] (decode-id (.readInt stream))]
 			(thaw id data cache stream))))
@@ -252,8 +282,8 @@
 
 (def dat (clojure.xml/parse "C:\\scratchspace\\systems.xml\\dbo.mapSolarSystems.xml"))
 
-(def dat2 (vector (for [x (range 1000)] {:x 1 :y (str "foo" x) :zat x})))
+(def dat2 (vector (for [x (range 1000)] {:thiskeywordtest 1 :ykeywordtest (str "foo" x) :zat x})))
 
 (defn bench [] (time (doseq [x (range 100)] (clone dat))))
 
-(clone dat)
+(clone dat) 

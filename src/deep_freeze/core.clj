@@ -1,6 +1,10 @@
 (ns deep-freeze.core
   [:import java.io.DataInputStream java.io.DataOutputStream])
 
+;; TODO
+;; * Support Snappy stream compression
+;; * Add streaming unit tests
+
 ;; Integer ids used instead of Bytes to provide room for type metadata
 (def ^:const ^Integer INTEGER   0)
 (def ^:const ^Integer LONG      1)
@@ -144,12 +148,16 @@
         (freeze-to-stream! m stream)))
   (*freeze item stream))
 
-(defn freeze-to-array [item]
-  (let [ba (java.io.ByteArrayOutputStream.)
-        stream (DataOutputStream. ba)]
-    (freeze-to-stream! item stream)
-    (.flush stream)
-    (.toByteArray ba)))
+(defn freeze-to-array
+  ([item] (freeze-to-array item true))
+  ([item compress?]
+     (let [ba (java.io.ByteArrayOutputStream.)
+           stream (DataOutputStream. ba)]
+       (freeze-to-stream! item stream)
+       (.flush stream)
+       (if compress?
+         (org.xerial.snappy.Snappy/compress (.toByteArray ba))
+         (.toByteArray ba)))))
 
 (defmulti thaw (fn [type data ^DataInputStream stream] type))
 (defmethod thaw INTEGER
@@ -225,21 +233,34 @@
   (let [[type data] (decode-id (.readInt stream))]
     (thaw type data stream)))
 
-(defn thaw-from-array [array]
-  (thaw-from-stream! (DataInputStream. (java.io.ByteArrayInputStream. array))))
-
+(defn thaw-from-array
+  ([array] (thaw-from-array array true))
+  ([array compressed?]
+     (thaw-from-stream!
+      (DataInputStream.
+       (java.io.ByteArrayInputStream.
+        (if compressed?
+          (org.xerial.snappy.Snappy/uncompress array)
+          array))))))
 
 ;;; Benchmarking
 (comment
-  (defn array-roundtrip [item] (thaw-from-array (freeze-to-array item)))
+  ;;(defn- array-roundtrip [item] (thaw-from-array (freeze-to-array item false)))
+  (defn- array-roundtrip [item] (thaw-from-array (freeze-to-array item true)))
   (def stressrec
    {:longs   (range 1000)
     :doubles (repeatedly 1000 rand)
     :strings (repeat 1000 "This is a UTF8 string! ಬಾ ಇಲ್ಲಿ ಸಂಭವಿಸ")})
   (time (dotimes [_ 1000] (array-roundtrip stressrec)))
 
-  ;; Results (Intel i7 2.67Ghz, 1Gb VM)
+  ;;; Results (Intel i7 2.67Ghz, 1Gb VM)
   ;; 1.0.0: 7300ms
   ;; 1.1.0: 3700ms
+  ;; 1.2.0: 4800ms (with Snappy compression)
+
+  ;;; Compression
+  (count (String. (freeze-to-array stressrec false))) ;; 67,496 chars
+  (count (String. (freeze-to-array stressrec true)))  ;; 17,554 chars
+  ;; i.e. a 26% ratio in string format
 
   )

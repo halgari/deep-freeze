@@ -1,4 +1,5 @@
-(defproject deep-freeze "org.clojars.ptaoussanis/1.2.0-SNAPSHOT"
-  :description "A pure Clojure serializer designed to generate compact data with excellent performance."
+(defproject org.clojars.ptaoussanis/deep-freeze "1.2.1-SNAPSHOT"
+  :description "High-performance, robust pure-Clojure de/serializer."
+  :url "https://github.com/ptaoussanis/deep-freeze"
   :dependencies [[org.clojure/clojure "1.3.0"]
                  [org.xerial.snappy/snappy-java "1.0.4.1"]])

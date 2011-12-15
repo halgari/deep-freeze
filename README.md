@@ -14,7 +14,7 @@ Include in a Leiningen project by adding this to your dependencies:
 [org.clojars.ptaoussanis/deep-freeze "1.2.1-SNAPSHOT"]
 ```
 
-Simply @:require deep-freeze.core@ and then use the 4 core functions to serialize/deserialize data.
+Simply **:require deep-freeze.core** and then use the 4 core functions to serialize/deserialize data.
 
 ###(freeze-to-stream item stream)
 Serializes the item into the java OutputStream.

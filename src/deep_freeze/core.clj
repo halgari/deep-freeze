@@ -245,23 +245,34 @@
 
 ;;; Benchmarking
 (comment
-  ;;(defn- array-roundtrip [item] (thaw-from-array (freeze-to-array item false)))
-  (defn- array-roundtrip [item] (thaw-from-array (freeze-to-array item true)))
+  (defn- array-roundtrip [item compress?]
+    (thaw-from-array (freeze-to-array item compress?) compress?))
+
   (def stressrec
    {:longs   (range 1000)
     :doubles (repeatedly 1000 rand)
     :strings (repeat 1000 "This is a UTF8 string! ಬಾ ಇಲ್ಲಿ ಸಂಭವಿಸ")})
+
+  (def pre-frozen-compressed   (freeze-to-array stressrec true))
+  (def pre-frozen-uncompressed (freeze-to-array stressrec false))
+
   (time (dotimes [_ 1000] (array-roundtrip stressrec)))
 
-  ;;; Results (Intel i7 2.67Ghz, 1Gb VM)
+  ;;; Intel Core i7 2.67Ghz notebook, 1Gb memory virtual machine
+
+  ;;; Roundtrips
   ;; 1.0.0: 7300ms
   ;; 1.1.0: 3700ms
   ;; 1.2.0: 4800ms (with Snappy compression)
   ;; clj-serializer 0.1.3: 5200ms (without compression)
 
+  ;;; Deserialization only, 1.2.0
+  (time (dotimes [_ 10000] (thaw-from-array pre-frozen-compressed true)))    ; 2100ms
+  (time (dotimes [_ 10000] (thaw-from-array pre-frozen-uncompressed false))) ; 140ms
+
   ;;; Compression
-  (count (String. (freeze-to-array stressrec false))) ;; 67,496 chars
-  (count (String. (freeze-to-array stressrec true)))  ;; 17,554 chars
+  (count (String. (freeze-to-array stressrec false))) ; 67,496 chars
+  (count (String. (freeze-to-array stressrec true)))  ; 17,554 chars
   ;; i.e. a 26% ratio in string format
 
   )

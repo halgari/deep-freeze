@@ -2,6 +2,10 @@
   [:import java.io.DataInputStream java.io.DataOutputStream])
 
 ;; TODO
+;; * Possible to de/serialize types, records, functions?
+;; * Investigate performance effect of memoizing serialization when possible
+;;   (esp. keywords).
+;; * Investigate performance and compression effect of interning keywords.
 ;; * Support Snappy stream compression
 ;; * Add streaming unit tests
 
@@ -27,6 +31,11 @@
 (def ^:const ^Integer AGENT     18)
 (def ^:const ^Integer META      19)
 (def ^:const ^Integer NIL       20)
+
+;; TODO Still to implement support for these
+;;(def ^:const ^Integer TYPE      21) ; clojure.lang.IType
+;;(def ^:const ^Integer RECORD    22) ; clojure.lang.IRecord
+;;(def ^:const ^Integer FN        23) ; clojure.lang.IFn
 
 (declare freeze-to-stream!)
 (declare thaw-from-stream!)

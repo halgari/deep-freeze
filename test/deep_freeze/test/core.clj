@@ -2,7 +2,10 @@
   (:use [deep-freeze.core] :reload)
   (:use [clojure.test]))
 
-(def testrec
+(defrecord testrecord [name age])
+(defrecord testtype   [name age])
+
+(def testdata
   "Equality should hold for these elements pre/post serialization."
 
   {:integer    (int 3)
@@ -24,12 +27,19 @@
    :empty-set  #{}
    :empty-list '()
    :meta       (with-meta {:a :A} {:metakey :metaval})
-   :nil        nil})
+   :nil        nil
+
+   ;; TODO Still to implement support for these
+   ;;:type       (testtype. "Stu" 26)
+   ;;:record     (testrecord. "Stu" 26)
+   ;;:function   (fn [x] (* x x))
+   ;;:closure    (let [x 2] (fn [y] (* x y)))
+   })
 
 (defn array-roundtrip [item] (thaw-from-array (freeze-to-array item)))
 
 (deftest test-arrays
-  (is (= testrec (array-roundtrip testrec)) "Preserves standard datatypes")
+  (is (= testdata (array-roundtrip testdata)) "Preserves standard datatypes")
 
   (is (let [t (with-meta {:a :A} {:metakey :metaval})]
         (= (meta t) (meta (array-roundtrip t)))) "Preserves metadata")

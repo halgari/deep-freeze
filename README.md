@@ -11,7 +11,7 @@ Supports Google's [Snappy](http://code.google.com/p/snappy-java/) for high-speed
 Include in a Leiningen project by adding this to your dependencies:
 
 ```clojure
-[org.clojars.ptaoussanis/deep-freeze "1.2.1-SNAPSHOT"]
+[ptaoussanis/deep-freeze "1.2.1"]
 ```
 
 Simply **:require deep-freeze.core** and then use the 4 core functions to serialize/deserialize data.

@@ -5,8 +5,6 @@
 (defrecord testrecord [name age])
 (defrecord testtype   [name age])
 
-(class '(1 2 3 4 5 (6 7 8 (9 10))))
-
 (def testdata
   "Equality should hold for these elements pre/post serialization."
 
@@ -42,7 +40,6 @@
 (defn array-roundtrip [item] (thaw-from-array (freeze-to-array item)))
 
 (deftest test-arrays
-  ;; (println "------------")
   (is (= testdata (array-roundtrip testdata)) "Preserves standard datatypes")
 
   (is (let [t (with-meta {:a :A} {:metakey :metaval})]

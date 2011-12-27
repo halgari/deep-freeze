@@ -9,153 +9,178 @@
 ;; * Support Snappy stream compression
 ;; * Add streaming unit tests
 
-;; Integer ids used instead of Bytes to provide room for type metadata
-(def ^:const ^Integer INTEGER   0)
-(def ^:const ^Integer LONG      1)
-(def ^:const ^Integer FLOAT     2)
-(def ^:const ^Integer DOUBLE    3)
-(def ^:const ^Integer BIGINT    4)
-(def ^:const ^Integer BIGDEC    5)
-(def ^:const ^Integer RATIO     6)
-(def ^:const ^Integer BOOLEAN   7)
-(def ^:const ^Integer CHAR      8)
-(def ^:const ^Integer STRING    9)
-(def ^:const ^Integer KEYWORD   10)
-(def ^:const ^Integer LIST      11)
-(def ^:const ^Integer VECTOR    12)
-(def ^:const ^Integer SET       13)
-(def ^:const ^Integer MAP       14)
-(def ^:const ^Integer SEQ       15)
-(def ^:const ^Integer ATOM      16)
-(def ^:const ^Integer REF       17)
-(def ^:const ^Integer AGENT     18)
-(def ^:const ^Integer META      19)
-(def ^:const ^Integer NIL       20)
+(def ^:const ^Byte INTEGER   0)
+(def ^:const ^Byte LONG      1)
+(def ^:const ^Byte FLOAT     2)
+(def ^:const ^Byte DOUBLE    3)
+(def ^:const ^Byte BIGINT    4)
+(def ^:const ^Byte BIGDEC    5)
+(def ^:const ^Byte RATIO     6)
+(def ^:const ^Byte BOOLEAN   7)
+(def ^:const ^Byte CHAR      8)
+(def ^:const ^Byte STRING    9)
+(def ^:const ^Byte KEYWORD   10)
+(def ^:const ^Byte LIST      11)
+(def ^:const ^Byte VECTOR    12)
+(def ^:const ^Byte SET       13)
+(def ^:const ^Byte MAP       14)
+(def ^:const ^Byte COLL      15)
+(def ^:const ^Byte ATOM      16)
+(def ^:const ^Byte REF       17)
+(def ^:const ^Byte AGENT     18)
+(def ^:const ^Byte META      19)
+(def ^:const ^Byte NIL       20)
+(def ^:const ^Byte BYTEARRAY 21)
 
 ;; TODO Still to implement support for these
-;;(def ^:const ^Integer TYPE      21) ; clojure.lang.IType
-;;(def ^:const ^Integer RECORD    22) ; clojure.lang.IRecord
-;;(def ^:const ^Integer FN        23) ; clojure.lang.IFn
+;;(def ^:const ^Byte TYPE      22) ; clojure.lang.IType
+;;(def ^:const ^Byte RECORD    23) ; clojure.lang.IRecord
+;;(def ^:const ^Byte FN        24) ; clojure.lang.IFn
 
 (declare freeze-to-stream!)
 (declare thaw-from-stream!)
 
-(defn encode-id [id data] (bit-or (bit-shift-left data 6) id))
-(defn decode-id [data]    [(bit-and data 63) (bit-shift-right data 6)])
+(defn- write-type! [^DataOutputStream stream ^Byte type] (.writeByte stream type))
 
-(defn write-id!
-  ([^DataOutputStream stream type]      (.writeInt stream type))
-  ([^DataOutputStream stream type data] (.writeInt stream (encode-id type data))))
+(defn- write-ByteArray!
+  "Write arbitrary ByteArray to stream, prepended by its length."
+  [^DataOutputStream stream ^bytes ba]
+  (let [len (alength ba)]
+    (.writeShort stream len) ; Encode length
+    (.write stream ba 0 len)))
 
-(defn write-bigint! [i ^DataOutputStream stream]
-  (let [ba (.toByteArray i)
-        c  (count ba)]
-    (.writeShort stream c)
-    (.write stream ba 0 c)))
+(defn- read-ByteArray!
+  "Read arbitrary ByteArray from stream, prepended by its length."
+  ^bytes [^DataInputStream stream]
+  (let [len (.readShort stream)
+        ba  (byte-array len)]
+    (.read stream ba 0 len)
+    ba))
 
-(defn read-bigint! [^DataInputStream stream]
-  (let [size (.readShort stream)
-        ba   (byte-array size)]
-    (.read stream ba 0 size)
-    (java.math.BigInteger. ba)))
+(defn- write-as-ByteArray!
+  "Write arbitrary object to stream as ByteArray, prepended by its length."
+  [^DataOutputStream stream obj]
+  (write-ByteArray! stream (.toByteArray obj)))
 
-(defprotocol Freezeable (*freeze [obj ^DataOutputStream stream]))
+(defn- read-BigInteger!
+  "Wrapper around read-ByteArray! for common case of reading to a BigInteger.
+  Note that as of Clojure 1.3, Clojure's BigInt ≠ Java's BigInteger."
+  ^java.math.BigInteger [^DataInputStream stream]
+  (java.math.BigInteger. (read-ByteArray! stream)))
+
+(defprotocol Freezeable (freeze [obj ^DataOutputStream stream]))
+
+;; Arbitrary ByteArray, needs to be defined outside of extend-protocol
+(extend-type (Class/forName "[B")
+  Freezeable
+  (freeze [itm ^DataOutputStream stream]
+    (write-type! stream BYTEARRAY)
+    (write-ByteArray! stream itm)))
 
 (extend-protocol Freezeable
   java.lang.Integer
-  (*freeze [itm ^DataOutputStream stream]
-    (write-id! stream INTEGER)
+  (freeze [itm ^DataOutputStream stream]
+    (write-type! stream INTEGER)
     (.writeInt stream itm))
   java.lang.Long
-  (*freeze [itm ^DataOutputStream stream]
-    (write-id! stream LONG)
+  (freeze [itm ^DataOutputStream stream]
+    (write-type! stream LONG)
     (.writeLong stream itm))
   java.lang.Float
-  (*freeze [itm ^DataOutputStream stream]
-    (write-id! stream FLOAT)
+  (freeze [itm ^DataOutputStream stream]
+    (write-type! stream FLOAT)
     (.writeFloat stream itm))
   java.lang.Double
-  (*freeze [itm ^DataOutputStream stream]
-    (write-id! stream DOUBLE)
+  (freeze [itm ^DataOutputStream stream]
+    (write-type! stream DOUBLE)
     (.writeDouble stream itm))
-  clojure.lang.BigInt
-  (*freeze [itm ^DataOutputStream stream]
-    (write-id! stream BIGINT)
-    (write-bigint! (.toBigInteger itm) stream))
+  clojure.lang.BigInt ; Native in Clojure >= 1.3.0
+  (freeze [itm ^DataOutputStream stream]
+    (write-type! stream BIGINT)
+    (write-as-ByteArray! stream (.toBigInteger itm)))
+  java.math.BigInteger ; Native in Clojure <= 1.2.0
+  (freeze [itm ^DataOutputStream stream]
+    (write-type! stream BIGINT)
+    (write-as-ByteArray! stream itm))
   java.math.BigDecimal
-  (*freeze [itm ^DataOutputStream stream]
-    (write-id! stream BIGDEC)
-    (write-bigint! (.unscaledValue itm) stream)
+  (freeze [itm ^DataOutputStream stream]
+    (write-type! stream BIGDEC)
+    (write-as-ByteArray! stream (.unscaledValue itm))
     (.writeInt stream (.scale itm)))
   clojure.lang.Ratio
-  (*freeze [itm ^DataOutputStream stream]
-    (write-id! stream RATIO)
-    (write-bigint! (.numerator itm) stream)
-    (write-bigint! (.denominator itm) stream))
+  (freeze [itm ^DataOutputStream stream]
+    (write-type! stream RATIO)
+    (write-as-ByteArray! stream (.numerator   itm))
+    (write-as-ByteArray! stream (.denominator itm)))
   java.lang.Boolean
-  (*freeze [itm ^DataOutputStream stream]
-    (write-id! stream BOOLEAN)
+  (freeze [itm ^DataOutputStream stream]
+    (write-type! stream BOOLEAN)
     (.writeBoolean stream itm))
   java.lang.Character
-  (*freeze [itm ^DataOutputStream stream]
-    (write-id! stream CHAR)
+  (freeze [itm ^DataOutputStream stream]
+    (write-type! stream CHAR)
     (.writeChar stream (int itm)))
   java.lang.String
-  (*freeze [itm ^DataOutputStream stream]
-    (write-id! stream STRING)
+  (freeze [itm ^DataOutputStream stream]
+    (write-type! stream STRING)
     (.writeUTF stream itm))
   clojure.lang.Keyword
-  (*freeze [itm ^DataOutputStream stream]
-    (write-id! stream KEYWORD)
+  (freeze [itm ^DataOutputStream stream]
+    (write-type! stream KEYWORD)
     (.writeUTF stream (name itm)))
   clojure.lang.IPersistentList
-  (*freeze [itm ^DataOutputStream stream]
-    (write-id! stream LIST (count itm))
+  (freeze [itm ^DataOutputStream stream]
+    (write-type! stream LIST)
+    (.writeInt stream (count itm)) ; Encode length
     (doseq [i itm] (freeze-to-stream! i stream)))
   clojure.lang.IPersistentVector
-  (*freeze [itm ^DataOutputStream stream]
-    (write-id! stream VECTOR (count itm))
+  (freeze [itm ^DataOutputStream stream]
+    (write-type! stream VECTOR)
+    (.writeInt stream (count itm)) ; Encode length
     (doseq [i itm] (freeze-to-stream! i stream)))
   clojure.lang.IPersistentSet
-  (*freeze [itm ^DataOutputStream stream]
-    (write-id! stream SET (count itm))
+  (freeze [itm ^DataOutputStream stream]
+    (write-type! stream SET)
+    (.writeInt stream (count itm)) ; Encode length
     (doseq [i itm] (freeze-to-stream! i stream)))
   clojure.lang.IPersistentMap
-  (*freeze [itm ^DataOutputStream stream]
-    (write-id! stream MAP (count itm))
+  (freeze [itm ^DataOutputStream stream]
+    (write-type! stream MAP)
+    (.writeInt stream (count itm)) ; Encode length
     (doseq [i itm]
       (freeze-to-stream! (first i) stream)
       (freeze-to-stream! (second i) stream)))
-  clojure.lang.ISeq ; Anything else implementing ISeq
-  (*freeze [itm ^DataOutputStream stream]
-    (write-id! stream SEQ (count itm))
+  clojure.lang.IPersistentCollection ; Non-specific collection
+  (freeze [itm ^DataOutputStream stream]
+    (write-type! stream COLL)
+    (.writeInt stream (count itm)) ; Encode length
     (doseq [i itm] (freeze-to-stream! i stream)))
   clojure.lang.Atom
-  (*freeze [itm ^DataOutputStream stream]
-    (write-id! stream ATOM)
+  (freeze [itm ^DataOutputStream stream]
+    (write-type! stream ATOM)
     (freeze-to-stream! @itm stream))
   clojure.lang.Ref
-  (*freeze [itm ^DataOutputStream stream]
-    (write-id! stream REF)
+  (freeze [itm ^DataOutputStream stream]
+    (write-type! stream REF)
     (freeze-to-stream! @itm stream))
   clojure.lang.Agent
-  (*freeze [itm ^DataOutputStream stream]
-    (write-id! stream AGENT)
+  (freeze [itm ^DataOutputStream stream]
+    (write-type! stream AGENT)
     (freeze-to-stream! @itm stream))
   nil
-  (*freeze [itm ^DataOutputStream stream]
-    (write-id! stream NIL))
+  (freeze [itm ^DataOutputStream stream]
+    (write-type! stream NIL))
   Object
-  (*freeze [itm ^DataOutputStream stream]
+  (freeze [itm ^DataOutputStream stream]
     (throw (java.lang.Exception.
             (str "Don't know how to freeze " (class itm) ". "
                  "Consider extending Freezeable?")))))
 
 (defn freeze-to-stream! [item ^DataOutputStream stream]
   (if-let [m (meta item)]
-    (do (write-id! stream META)
+    (do (write-type! stream META)
         (freeze-to-stream! m stream)))
-  (*freeze item stream))
+  (freeze item stream))
 
 (defn freeze-to-array
   ([item] (freeze-to-array item true))
@@ -168,79 +193,88 @@
          (org.xerial.snappy.Snappy/compress (.toByteArray ba))
          (.toByteArray ba)))))
 
-(defmulti thaw (fn [type data ^DataInputStream stream] type))
+(defmulti thaw (fn [^Byte type ^DataInputStream stream] type))
+
+(defmethod thaw BYTEARRAY
+  [_ ^DataInputStream stream]
+  (read-ByteArray! stream))
 (defmethod thaw INTEGER
-  [type data ^DataInputStream stream]
+  [_ ^DataInputStream stream]
   (.readInt stream))
 (defmethod thaw LONG
-  [type data ^DataInputStream stream]
+  [_ ^DataInputStream stream]
   (.readLong stream))
 (defmethod thaw FLOAT
-  [type data ^DataInputStream stream]
+  [_ ^DataInputStream stream]
   (.readFloat stream))
 (defmethod thaw DOUBLE
-  [type type ^DataInputStream stream]
+  [_ ^DataInputStream stream]
   (.readDouble stream))
 (defmethod thaw BIGINT
-  [type data ^DataInputStream stream]
-  (bigint (read-bigint! stream)))
+  [_ ^DataInputStream stream]
+  (bigint (read-BigInteger! stream)))
 (defmethod thaw BIGDEC
-  [type data ^DataInputStream stream]
-  (java.math.BigDecimal. (read-bigint! stream) (.readInt stream)))
+  [_ ^DataInputStream stream]
+  (java.math.BigDecimal. (read-BigInteger! stream) (.readInt stream)))
 (defmethod thaw RATIO
-  [type data ^DataInputStream stream]
-  (/ (read-bigint! stream) (read-bigint! stream)))
+  [_ ^DataInputStream stream]
+  (/ (bigint (read-BigInteger! stream)) (bigint (read-BigInteger! stream))))
 (defmethod thaw BOOLEAN
-  [type data ^DataInputStream stream]
+  [_ ^DataInputStream stream]
   (.readBoolean stream))
 (defmethod thaw CHAR
-  [type data ^DataInputStream stream]
+  [_ ^DataInputStream stream]
   (.readChar stream))
 (defmethod thaw STRING
-  [type data ^DataInputStream stream]
+  [_ ^DataInputStream stream]
   (.readUTF stream))
 (defmethod thaw KEYWORD
-  [type data ^DataInputStream stream]
+  [_ ^DataInputStream stream]
   (keyword (.readUTF stream)))
 (defmethod thaw LIST
-  [type data ^DataInputStream stream]
-  (apply list (repeatedly data (fn [] (thaw-from-stream! stream)))))
+  [_ ^DataInputStream stream]
+  (let [len (.readInt stream)]
+    (apply list (repeatedly len (fn [] (thaw-from-stream! stream))))))
 (defmethod thaw VECTOR
-  [type data ^DataInputStream stream]
-  (vec (repeatedly data (fn [] (thaw-from-stream! stream)))))
+  [_ ^DataInputStream stream]
+  (let [len (.readInt stream)]
+    (vec (repeatedly len (fn [] (thaw-from-stream! stream))))))
 (defmethod thaw SET
-  [type data ^DataInputStream stream]
-  (set (repeatedly data (fn [] (thaw-from-stream! stream)))))
+  [_ ^DataInputStream stream]
+  (let [len (.readInt stream)]
+    (set (repeatedly len (fn [] (thaw-from-stream! stream))))))
 (defmethod thaw MAP
-  [type data ^DataInputStream stream]
-  (persistent!
-   (reduce (fn [m _]
-             (assoc! m (thaw-from-stream! stream) (thaw-from-stream! stream)))
-           (transient {}) (range data))))
-(defmethod thaw SEQ
-  [type data ^DataInputStream stream]
-  (repeatedly data (fn [] (thaw-from-stream! stream))))
+  [_ ^DataInputStream stream]
+  (let [len (.readInt stream)]
+    (persistent!
+     (reduce (fn [m _]
+               (assoc! m (thaw-from-stream! stream) (thaw-from-stream! stream)))
+             (transient {}) (range len)))))
+(defmethod thaw COLL
+  [_ ^DataInputStream stream]
+  (let [len (.readInt stream)]
+    (repeatedly len (fn [] (thaw-from-stream! stream)))))
 (defmethod thaw ATOM
-  [type data ^DataInputStream stream]
+  [_ ^DataInputStream stream]
   (atom (thaw-from-stream! stream)))
 (defmethod thaw REF
-  [type data ^DataInputStream stream]
+  [_ ^DataInputStream stream]
   (ref (thaw-from-stream! stream)))
 (defmethod thaw AGENT
-  [type data ^DataInputStream stream]
+  [_ ^DataInputStream stream]
   (agent (thaw-from-stream! stream)))
 (defmethod thaw META
-  [type data ^DataInputStream stream]
+  [_ ^DataInputStream stream]
   (let [m (thaw-from-stream! stream)]
     (with-meta (thaw-from-stream! stream) m)))
 (defmethod thaw NIL
-  [type data ^DataInputStream stream]
+  [_ ^DataInputStream stream]
   nil)
 
 (defn thaw-from-stream!
   [^DataInputStream stream]
-  (let [[type data] (decode-id (.readInt stream))]
-    (thaw type data stream)))
+  (thaw (.readByte stream) ; Type
+        stream))
 
 (defn thaw-from-array
   ([array] (thaw-from-array array true))
@@ -265,23 +299,28 @@
   (def pre-frozen-compressed   (freeze-to-array stressrec true))
   (def pre-frozen-uncompressed (freeze-to-array stressrec false))
 
-  (time (dotimes [_ 1000] (array-roundtrip stressrec)))
+  (time (dotimes [_ 1000] (array-roundtrip stressrec false)))
 
   ;;; Intel Core i7 2.67Ghz notebook, 1Gb memory virtual machine
-
   ;;; Roundtrips
-  ;; 1.0.0: 7300ms
-  ;; 1.1.0: 3700ms
-  ;; 1.2.0: 4800ms (with Snappy compression)
-  ;; clj-serializer 0.1.3: 5200ms (without compression)
 
-  ;;; Deserialization only, 1.2.0
-  (time (dotimes [_ 10000] (thaw-from-array pre-frozen-compressed true)))    ; 2100ms
+  ;; clj-serializer 0.1.3 wo/comp: 5200ms
+  ;; 1.0.0                wo/comp: 7300ms
+  ;; 1.1.0                wo/comp: 3700ms
+  ;; 1.2.0                wo/comp: 3700ms
+  ;;                       w/comp: 4800ms
+  ;; 1.2.2                wo/comp: 3500ms
+  ;;                       w/comp: 4100ms
+
+  ;;; Deserialization only (1.2.2)
+  (time (dotimes [_ 10000] (thaw-from-array pre-frozen-compressed true)))    ; 1900ms
   (time (dotimes [_ 10000] (thaw-from-array pre-frozen-uncompressed false))) ; 140ms
 
-  ;;; Compression
-  (count (String. (freeze-to-array stressrec false))) ; 67,496 chars
-  (count (String. (freeze-to-array stressrec true)))  ; 17,554 chars
-  ;; i.e. a 26% ratio in string format
+  ;;; Compression (1.2.2)
+  (count (String. (freeze-to-array stressrec false))) ; 58,538 chars
+  (count (String. (freeze-to-array stressrec true)))  ; 16,842 chars
+  ;; i.e. a 29% ratio in string format
 
+  ;;(remove-ns 'deep-freeze.core)
+  ;;(remove-ns 'deep-freeze.test.core)
   )

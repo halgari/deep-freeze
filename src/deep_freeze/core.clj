@@ -305,11 +305,12 @@
   ;;; Roundtrips
 
   ;; clj-serializer 0.1.3 wo/comp: 5200ms
-  ;; 1.0.0                wo/comp: 7300ms
-  ;; 1.1.0                wo/comp: 3700ms
-  ;; 1.2.0                wo/comp: 3700ms
+  ;; ------------------------------------
+  ;; deep-freeze    1.0.0 wo/comp: 7300ms
+  ;;                1.1.0 wo/comp: 3700ms
+  ;;                1.2.0 wo/comp: 3700ms
   ;;                       w/comp: 4800ms
-  ;; 1.2.2                wo/comp: 3500ms
+  ;;                1.2.2 wo/comp: 3500ms
   ;;                       w/comp: 4100ms
 
   ;;; Deserialization only (1.2.2)

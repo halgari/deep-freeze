@@ -1,13 +1,17 @@
 (ns deep-freeze.core
   [:import java.io.DataInputStream java.io.DataOutputStream])
 
-;; TODO
+;;;; TODO
 ;; * Possible to de/serialize types, records, functions?
 ;; * Investigate performance effect of memoizing serialization when possible
 ;;   (esp. keywords).
 ;; * Investigate performance and compression effect of interning keywords.
-;; * Support Snappy stream compression
-;; * Add streaming unit tests
+;; * Support Snappy stream compression? Would require some significant changes
+;;   to code including lots of duplication for compression-on/compression-off
+;;   cases. (Unless Snappy stream could be "switched off" and could be told to
+;;   just pass input through unchanged?).
+
+. Is there much demand for this feature?
 
 (def ^:const ^Byte INTEGER   0)
 (def ^:const ^Byte LONG      1)
@@ -32,7 +36,7 @@
 (def ^:const ^Byte NIL       20)
 (def ^:const ^Byte BYTEARRAY 21)
 
-;; TODO Still to implement support for these
+;;;;; TODO Still to implement support for these
 ;;(def ^:const ^Byte TYPE      22) ; clojure.lang.IType
 ;;(def ^:const ^Byte RECORD    23) ; clojure.lang.IRecord
 ;;(def ^:const ^Byte FN        24) ; clojure.lang.IFn
@@ -286,7 +290,7 @@
           (org.xerial.snappy.Snappy/uncompress array)
           array))))))
 
-;;; Benchmarking
+;;;; Benchmarking
 (comment
   (defn- array-roundtrip [item compress?]
     (thaw-from-array (freeze-to-array item compress?) compress?))
@@ -324,4 +328,26 @@
 
   ;;(remove-ns 'deep-freeze.core)
   ;;(remove-ns 'deep-freeze.test.core)
+  )
+
+
+;;;; Experimental/dev (streaming compression)
+(comment
+
+  (with-open
+      [f (org.xerial.snappy.SnappyOutputStream.
+          (java.io.DataOutputStream.
+           (java.io.FileOutputStream. "foo.bin")))]
+    (.write f 33))
+
+  (with-open
+      [f (org.xerial.snappy.SnappyInputStream.
+          (java.io.DataInputStream.
+           (java.io.FileInputStream. "foo.bin")))]
+    (.read f))
+
+  ;; Seems we'd need to change every use of DataOutputStream?
+  ;; And how does the streamed compression ratio compare to all-at-once
+  ;; compression? Presumably it'd be less effective, yes?
+
   )

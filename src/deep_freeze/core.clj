@@ -9,9 +9,7 @@
 ;; * Support Snappy stream compression? Would require some significant changes
 ;;   to code including lots of duplication for compression-on/compression-off
 ;;   cases. (Unless Snappy stream could be "switched off" and could be told to
-;;   just pass input through unchanged?).
-
-. Is there much demand for this feature?
+;;   just pass input through unchanged?). Is there much demand for this feature?
 
 (def ^:const ^Byte INTEGER   0)
 (def ^:const ^Byte LONG      1)

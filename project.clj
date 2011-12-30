@@ -1,4 +1,4 @@
-(defproject ptaoussanis/deep-freeze "1.2.2-SNAPSHOT"
+(defproject deep-freeze "1.2.2-SNAPSHOT"
   :description "High-performance, robust pure-Clojure de/serializer."
   :url "https://github.com/ptaoussanis/deep-freeze"
   :dependencies [[org.clojure/clojure "1.3.0"]

@@ -1,6 +1,6 @@
 #Deep-Freeze
 
-Deep Freeze is a pure Clojure serialzier that stresses performance and compactness. The aim of this 
+Deep Freeze is a pure Clojure serializer that stresses performance and compactness. The aim of this 
 project is to become the defacto standard for binary serialization of Clojure data. The interface for the 
 library is extremely easy to use.
 
@@ -26,4 +26,4 @@ Serializes the item into a byte array.
 Deserializes a clojure structure form the java InputStream.
 
 ###(thaw-from-array array)
-Same as thaw but uses a byte array as imput.
+Same as thaw but uses a byte array as input.
